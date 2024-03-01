@@ -58,5 +58,3 @@ function showDialog() {
       .setHeight(600);
   SpreadsheetApp.getUi().showModelessDialog(html, '주문 상태');
 }
-
-

@@ -51,6 +51,7 @@
       </tr>
     </table>
     <script>
+
       // 페이지 로드 시 실행
       document.addEventListener('DOMContentLoaded', function() {
         google.script.run.withSuccessHandler(buildTable).getOrdersData();
@@ -89,7 +90,9 @@
       // 링크 상태 토글
       function toggleLinkStatusInSheet(row, event) {
         google.script.run.withSuccessHandler(function(result) {
-          document.getElementById('linkStatus' + row).textContent = result.linkExpired ? '만료' : '유효';
+          var linkStatusElement = document.getElementById('linkStatus' + row);
+          linkStatusElement.textContent = result.linkExpired ? '만료' : '유효';
+          linkStatusElement.style.color = result.linkExpired ? "red" : "green"; 
           event.target.textContent = result.linkExpired ? '복구' : '취소';
         }).toggleLinkStatus(row);
       }
