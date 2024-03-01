@@ -1,75 +1,142 @@
 function importOrders() {
-  var threads = GmailApp.search('subject:"주문이 접수되었습니다"');
-  threads.forEach(thread => {
-    var messages = thread.getMessages();
-    messages.forEach(message => {
-      var body = message.getPlainBody();
 
-      var orderDetails = parseOrderDetails(body);
-      var productDetails = extractProductDetails(body);
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let recentMailId = ""//scriptProperties.getPropery('recentMailId')
 
-      var memberDetails = addOrUpdateMember(orderDetails.userName, orderDetails.userEmail); // Members.gs에서 함수 호출
-
-      var updateProductDetails = productDetails.map(productDetail => addOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
-
-      updateProductDetails.forEach(updateProductDetail => {
-         saveOrder(orderDetails, memberDetails, updateProductDetail); // Orders.gs에서 함수 호출
-       });
-});
-});
+  let query = "from:(aaf) subject:`주문이 접수되었습니다.`";
+  let pageToken;
+  let flag = false;
+  let firstMsgId = ''
+  do{
+    let threadList = Gmail.Users.Messages.list('me', {
+      q: query,
+      pageToken:pageToken,
+      maxResults:1
+    });
+    if(threadList.messages.length > 0){
+      if(!firstMsgId){
+        threadList.messages[0].id
+      }
+      threadList.messages.forEach((msg,i)=>{
+        if(flag && msg.id==recentMailId){
+          flag=true
+          return;
+        }
+        let message = GmailApp.getMessageById(msg.id);
+        var plainBody = message.getPlainBody();
+        var htmlBody = message.getBody();
+        var mailRoot = getMailRoot(htmlBody);
+        var orderDetails = parseOrderDetails(plainBody);
+        var productDetails = parseProductDetails(mailRoot);
+        
+        let Member = {
+          name: orderDetails.memberName,
+          email: orderDetails.memberEmail
+        }
+        
+        var memberDetails = findOrUpdateMember(Member); // Members.gs에서 함수 호출
+        var updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
+        deliverOrder(orderDetails,updateProductDetails)
+        updateProductDetails.forEach(updateProductDetail => {
+          saveOrder(orderDetails, memberDetails, updateProductDetail); // Orders.gs에서 함수 호출
+        });
+      })
+    }
+    flag = true //임시
+    pageToken = threadList.nextPageToken;
+  } while(!flag && pageToken);
+  scriptProperties.setProperty('recentMailId', firstMsgId)
 }
 
-// function importOrders() {
-//   // PropertiesService를 사용하여 마지막으로 처리한 이메일의 시간을 가져옵니다.
-//   var scriptProperties = PropertiesService.getScriptProperties();
-//   var lastProcessedTime = scriptProperties.getProperty('lastProcessedTime');
+function deliverOrders(){
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperties('spreadSheetId');
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  let orderSheetName = "Order";
+  let orderSheet = spreadsheet.getSheetByName(orderSheetName);
 
-//   var threads, processedAllRecentEmails = false;
-//   var start = 0;
-//   var batchSize = 10; // 한 번에 처리할 이메일 수
+  const productIdColumn = 4
+  const emailColumn = 5
+  const deliverColumn = 7
 
-//   while (!processedAllRecentEmails) {
-//     // Gmail 검색 쿼리를 설정합니다. 마지막 처리 시간 이후의 이메일만 검색합니다.
-//     var searchQuery = 'subject:"주문이 접수되었습니다"';
-//     threads = GmailApp.search(searchQuery, start, batchSize);
+  let lastRow = orderSheet.getLastRow()
+  var orders = [];
+  for (var row = 2; row < lastRow; row++) {
+    let range = orderSheet.getRange(row,1)
+    if (range.offset(0,deliverColumn-1).getValue() === true) {
+      break;
+    }
+    let order = {
+      email: range.offset(0,emailColumn-1).getValue(),
+      productId : range.offset(0,productIdColumn-1).getValue(),
+    }
+    orders.push(order);
+  }
 
-//     for (var i = 0; i < threads.length; i++) {
-//       var messages = threads[i].getMessages();
-//       for (var j = 0; j < messages.length; j++) {
-//         var message = messages[j];
-//         var messageDate = message.getDate(); // 메시지의 날짜를 가져옵니다.
-//         var messageTime = messageDate.getTime(); // 메시지 날짜의 타임스탬프를 가져옵니다.
+  orders.forEach(function(order) {
+    let email = order.email
+    let productId = order.productId
+    let product = findProductById(productId)
+    let files = product.files.map((file)=>{
+      let url = shareFiles(fileUrl, email)
+      return {
+        ...file,
+        url
+      }
+    })
 
-//         // 이메일이 lastProcessedTime 이후에 도착했는지 확인합니다.
-//         if (!lastProcessedTime || messageTime > parseInt(lastProcessedTime)) {
-//           var body = message.getPlainBody();
-//           var orderDetails = parseOrderDetails(body);
-//           var productDetails = extractProductDetails(body);
-//           var memberDetails = addOrUpdateMember(orderDetails.userName, orderDetails.userEmail);
-//           productDetails.map(productDetail => addOrUpdateProduct(productDetail))
-//             .forEach(updatedProductDetail => {
-//               saveOrder(orderDetails, memberDetails, updatedProductDetail);
-//             });
+    let subject = "구매하신 상품입니다."
+    let template = HtmlService.createTemplateFromFile('emailTemplate')
+    template.product = product;
+    template.files = files;
 
-//           // 새로운 endTime 업데이트
-//           lastProcessedTime = messageTime.toString();
-//         } else {
-//           // 마지막 처리 시간 이전의 이메일을 만나면 더 이상 검사하지 않고 반복을 종료합니다.
-//           processedAllRecentEmails = true;
-//           break;
-//         }
-//       }
-//       if (processedAllRecentEmails) break;
-//     }
+    let htmlBody = template.evaluate().getContent();
 
-//     // 모든 스레드를 처리했거나 마지막 처리 시간 이전의 이메일을 만났으면 반복을 종료합니다.
-//     if (threads.length < batchSize) {
-//       processedAllRecentEmails = true;
-//     } else {
-//       start += batchSize; // 다음 배치를 위해 시작 인덱스 업데이트
-//     }
-//   }
+    GmailApp.sendEmail(email, subject,"",{
+      name: 'AAF',
+      htmlBody: htmlBody
+    });
+    
+  });
+}
 
-//   // 처리가 완료된 후, 가장 최근 이메일의 시간을 lastProcessedTime으로 저장
-//   scriptProperties.setProperty('lastProcessedTime', lastProcessedTime);
-// }
+function deliverOrder(orderDetails, productDetails){
+
+  //let emails = new Set();
+  let products = productDetails.map((prod)=>{
+    let product = findProductById(prod.id)
+    let files = product.files.map((file)=>{
+      let url = shareFiles(file.driveId, prod.email)
+      return {
+        ...file,
+        url
+      }
+    })
+    product.files = files
+    return product
+  })
+
+  let subject = "구매하신 상품입니다."
+  let template = HtmlService.createTemplateFromFile('emailTemplate')
+  template.order = orderDetails
+  template.products = products;
+
+  let htmlBody = template.evaluate().getContent();
+  GmailApp.sendEmail(orderDetails.memberEmail, subject,"",{
+    name: 'AAF',
+    htmlBody: htmlBody
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
