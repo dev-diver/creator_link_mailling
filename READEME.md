@@ -25,3 +25,8 @@ clasp push //local code를 프로젝트에 반영
 - GAS 프로젝트에서 에서 코딩하는 경우
   - GAS프로젝트에서 잘 돌아가는 지 확인 후 local에서 `clasp pull`
   - `git commit->push->PR`
+
+## git branching 전략
+
+- 각자 fork 후 dev에 PR
+- release 로 납품
