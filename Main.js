@@ -1,7 +1,19 @@
+function doGet(){
+  return HtmlService.createHtmlOutputFromFile('cancelWindow')
+}
+
+// 모드리스 대화상자 표시
+function showDialog() {
+  var html = HtmlService.createHtmlOutputFromFile('cancelWindow')
+      .setWidth(800)
+      .setHeight(600);
+  SpreadsheetApp.getUi().showModelessDialog(html, '주문 상태');
+}
+
 function importOrders() {
 
   let scriptProperties = PropertiesService.getScriptProperties();
-  let recentMailId = ""//scriptProperties.getPropery('recentMailId')
+  let recentMailId = ""//scriptProperties.getProperty('recentMailId')
 
   let query = "from:(aaf) subject:`주문이 접수되었습니다.`";
   let pageToken;
@@ -15,7 +27,7 @@ function importOrders() {
     });
     if(threadList.messages.length > 0){
       if(!firstMsgId){
-        threadList.messages[0].id
+        firstMsgId = threadList.messages[0].id
       }
       threadList.messages.forEach((msg,i)=>{
         if(flag && msg.id==recentMailId){
@@ -26,20 +38,13 @@ function importOrders() {
         var plainBody = message.getPlainBody();
         var htmlBody = message.getBody();
         var mailRoot = getMailRoot(htmlBody);
-        var orderDetails = parseOrderDetails(plainBody);
+        var orderDetails = parseOrderDetails(plainBody); //memberName,memberEmail,orderNumber,orderDate,
         var productDetails = parseProductDetails(mailRoot);
-        
-        let Member = {
-          name: orderDetails.memberName,
-          email: orderDetails.memberEmail
-        }
-        
-        var memberDetails = findOrUpdateMember(Member); // Members.gs에서 함수 호출
         var updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
+        
         deliverOrder(orderDetails,updateProductDetails)
-        updateProductDetails.forEach(updateProductDetail => {
-          saveOrder(orderDetails, memberDetails, updateProductDetail); // Orders.gs에서 함수 호출
-        });
+        saveOrder(orderDetails)
+        saveOrderProduct(orderDetails, updateProductDetails); // Orders.gs에서 함수 호출
       })
     }
     flag = true //임시
@@ -48,56 +53,46 @@ function importOrders() {
   scriptProperties.setProperty('recentMailId', firstMsgId)
 }
 
-function deliverOrders(){
+function importCancelOrders() {
+
   let scriptProperties = PropertiesService.getScriptProperties();
-  let spreadSheetId = scriptProperties.getProperties('spreadSheetId');
-  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
-  let orderSheetName = "Order";
-  let orderSheet = spreadsheet.getSheetByName(orderSheetName);
+  let recentMailId = ""//scriptProperties.getProperty('recentCanceledMailId')
 
-  const productIdColumn = 4
-  const emailColumn = 5
-  const deliverColumn = 7
-
-  let lastRow = orderSheet.getLastRow()
-  var orders = [];
-  for (var row = 2; row < lastRow; row++) {
-    let range = orderSheet.getRange(row,1)
-    if (range.offset(0,deliverColumn-1).getValue() === true) {
-      break;
-    }
-    let order = {
-      email: range.offset(0,emailColumn-1).getValue(),
-      productId : range.offset(0,productIdColumn-1).getValue(),
-    }
-    orders.push(order);
-  }
-
-  orders.forEach(function(order) {
-    let email = order.email
-    let productId = order.productId
-    let product = findProductById(productId)
-    let files = product.files.map((file)=>{
-      let url = shareFiles(fileUrl, email)
-      return {
-        ...file,
-        url
-      }
-    })
-
-    let subject = "구매하신 상품입니다."
-    let template = HtmlService.createTemplateFromFile('emailTemplate')
-    template.product = product;
-    template.files = files;
-
-    let htmlBody = template.evaluate().getContent();
-
-    GmailApp.sendEmail(email, subject,"",{
-      name: 'AAF',
-      htmlBody: htmlBody
+  let query = "from:(aaf) subject:`취소 요청이 접수되었습니다.`";
+  let pageToken;
+  let flag = false;
+  let firstMsgId = ''
+  do{
+    let threadList = Gmail.Users.Messages.list('me', {
+      q: query,
+      pageToken:pageToken,
+      maxResults:1
     });
-    
-  });
+    if(threadList.messages.length > 0){
+      if(!firstMsgId){
+        firstMsgId = threadList.messages[0].id
+      }
+      threadList.messages.forEach((msg,i)=>{
+        if(flag && msg.id==recentMailId){
+          flag = true
+          return;
+        }
+        let message = GmailApp.getMessageById(msg.id);
+        var plainBody = message.getPlainBody();
+        var htmlBody = message.getBody();
+        var mailRoot = getMailRoot(htmlBody);
+        var orderDetails = parseOrderDetails(plainBody);
+        var productDetails = parseProductDetails(mailRoot);
+
+        var updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
+        cancelOrder(orderDetails,updateProductDetails)
+        updateDeleteOrderProduct(orderDetails, updateProductDetails, true); // Orders.gs에서 함수 호출
+      })
+    }
+    flag = true //임시
+    pageToken = threadList.nextPageToken;
+  } while(!flag && pageToken);
+  scriptProperties.setProperty('recentCanceledMailId', firstMsgId)
 }
 
 function deliverOrder(orderDetails, productDetails){
@@ -117,7 +112,35 @@ function deliverOrder(orderDetails, productDetails){
   })
 
   let subject = "구매하신 상품입니다."
-  let template = HtmlService.createTemplateFromFile('emailTemplate')
+  let template = HtmlService.createTemplateFromFile('emailAcceptTemplate')
+  template.order = orderDetails
+  template.products = products;
+
+  let htmlBody = template.evaluate().getContent();
+  console.log("send Email: ", orderDetails.memberEmail)
+  GmailApp.sendEmail(orderDetails.memberEmail, subject,"",{
+    name: 'AAF',
+    htmlBody: htmlBody
+  });
+}
+
+function cancelOrder(orderDetails, productDetails){
+
+  let products = productDetails.map((prod)=>{
+    let product = findProductById(prod.id)
+    let files = product.files.map((file)=>{
+      let url = unshareExpiredFiles(file.driveId, prod.email)
+      return {
+        ...file,
+        url
+      }
+    })
+    product.files = files
+    return product
+  })
+
+  let subject = "취소하신 상품입니다."
+  let template = HtmlService.createTemplateFromFile('emailCancelTemplate')
   template.order = orderDetails
   template.products = products;
 
@@ -127,16 +150,4 @@ function deliverOrder(orderDetails, productDetails){
     htmlBody: htmlBody
   });
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

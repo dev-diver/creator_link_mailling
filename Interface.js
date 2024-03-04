@@ -1,10 +1,12 @@
 /***** Modeless Dialog ******/
 // 주문 데이터 및 관련 회원 및 상품 정보 가져오기
 function getOrdersData() {
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  var ordersSheet = spreadsheet.getSheetByName("주문");
-  var membersSheet = spreadsheet.getSheetByName("회원");
-  var productsSheet = spreadsheet.getSheetByName("상품");
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId');
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  var ordersSheet = spreadsheet.getSheetByName("Order");
+  var membersSheet = spreadsheet.getSheetByName("Member");
+  var productsSheet = spreadsheet.getSheetByName("Product");
 
   var orders = ordersSheet.getDataRange().getValues();
   var members = membersSheet.getDataRange().getValues();
@@ -44,17 +46,12 @@ function getOrdersData() {
 
 // 링크 상태 토글
 function toggleLinkStatus(row) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId');
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  var sheet = spreadsheet.getSheetByName("Order");
   var currentValue = sheet.getRange(row, 8).getValue(); // 8번째 열이 만료된 링크 상태
   var newValue = !(currentValue === true);
   sheet.getRange(row, 8).setValue(newValue ? true : false);
   return { linkExpired: newValue };
-}
-
-// 모드리스 대화상자 표시
-function showDialog() {
-  var html = HtmlService.createHtmlOutputFromFile('cancelWindow')
-      .setWidth(800)
-      .setHeight(600);
-  SpreadsheetApp.getUi().showModelessDialog(html, '주문 상태');
 }

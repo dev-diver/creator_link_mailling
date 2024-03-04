@@ -79,6 +79,7 @@ function createObjectFromRow(sheet, row, fieldValues){
   for (let i = 0; i < fieldValues.length; i++) {
     obj[fieldValues[i]] = rowData[i];
   }
+  obj["row"]=row
   return obj;
 }
 
