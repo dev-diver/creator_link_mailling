@@ -40,26 +40,72 @@
     </style>
   </head>
   <body>
-    <div id="loadingMessage">Loading...</div>
-    <table id="ordersTable" style="display: none;">
+    <form id="loadForm">
+      <div>
+        <label for="startDate">시작 날짜</label>
+        <input type="date" id="startDate" name="startDate"><br>
+        <label for="startDate">종료 날짜</label>
+        <input type="date" id="endDate" name="endDate">
+      </div>
+      <div>
+        <input type="radio" id="allStatus" name="shareStatus" value="total" />
+        <label for="allStatus">전체</label>
+
+        <input type="radio" id="sendStatus" name="shareStatus" value="share" />
+        <label for="allStatus">공유</label>
+
+        <input type="radio" id="cancelStatus" name="shareStatus" value="cancel" />
+        <label for="allStatus">만료</label>
+      </div>
+      <div>
+        <button type="submit" id="submitButton">불러오기</button>
+      </div>
+    </form>
+    <table id="ordersTable">
       <tr>
+        <th>주문번호</th>
+        <th>주문날짜</th>
         <th>고객명</th>
-        <th>고객 메일 주소</th>
+        <th>메일 주소</th>
+        <th>배송 주소</th>
         <th>상품명</th>
-        <th>링크 상태</th>
+        <th>링크상태</th>
         <th>액션</th>
       </tr>
     </table>
+    <div id="loadingMessage" style="display: none;">Loading...</div>
     <script>
 
-      // 페이지 로드 시 실행
       document.addEventListener('DOMContentLoaded', function() {
-        google.script.run.withSuccessHandler(buildTable).getOrdersData();
+        var today = new Date().toISOString().split('T')[0];
+        document.getElementById('startDate').value = today;
+        document.getElementById('endDate').value = today;
       });
 
+      document.getElementById('submitButton').addEventListener('click', function(event) {
+        let loadingMessage = document.getElementById('loadingMessage');
+        loadingMessage.style.display = '';
+        event.preventDefault();
+        loadTableData();
+        
+      });
+
+      function loadTableData() {
+        // 시작 날짜, 종료 날짜, 상태 가져오기
+        let startDate = document.getElementById('startDate').value;
+        let endDate = document.getElementById('endDate').value;
+        let shareStatus = document.querySelector('input[name="shareStatus"]:checked').value;
+        let offsetRow = 0
+        google.script.run.withSuccessHandler((data)=>{
+          buildTable(data);
+          let loadingMessage = document.getElementById('loadingMessage');
+          loadingMessage.style.display = 'none';
+        }).getOrders(startDate, endDate, shareStatus, offsetRow)
+      }
 
       // 주문 데이터로 테이블 생성
       function buildTable(orders) {
+        console.log("orders", orders)
         var table = document.getElementById('ordersTable');
         var loadingMessage = document.getElementById('loadingMessage');
 
@@ -72,18 +118,21 @@
         var table = document.getElementById('ordersTable');
         orders.forEach(function(order) {
           var row = table.insertRow(-1); // 테이블 끝에 새로운 행 삽입
-          var cell1 = row.insertCell(0);
-          var cell2 = row.insertCell(1);
-          var cell3 = row.insertCell(2);
-          var cell4 = row.insertCell(3);
-          var cell5 = row.insertCell(4);
-
-
-          cell1.textContent = order.memberName;
-          cell2.textContent = order.memberEmail;
-          cell3.textContent = order.productName;
-          cell4.innerHTML = `<span id="linkStatus${order.row}" style="color:${order.linkExpired ? "red":"green"}">${order.linkExpired ? '만료' : '유효'}</span>`;
-          cell5.innerHTML = `<button onclick="toggleLinkStatusInSheet(${order.row}, event)">${order.linkExpired ? '복구' : '취소'}</button>`;
+          
+          let i = 0
+          let cells = []
+          for (const key in order) {
+            if (order.hasOwnProperty(key)) {
+              let cell = row.insertCell(i)
+              cells.push(cell)
+              cell.textContent = order[key]
+              i++;
+            }
+          }
+          // if(order[""])
+          cells[i-1].innerHTML = `<span id="linkStatus${order.row}" style="color:${order.linkExpired ? "red":"green"}">${order.linkExpired ? '만료' : '유효'}</span>`;
+          let cell = row.insertCell(i)
+          cell.innerHTML = `<button onclick="toggleLinkStatusInSheet(${order.row}, event)">${order.linkExpired ? '복구' : '취소'}</button>`;
         });
       }
 

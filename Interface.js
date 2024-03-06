@@ -1,57 +1,85 @@
 /***** Modeless Dialog ******/
 // 주문 데이터 및 관련 회원 및 상품 정보 가져오기
-function getOrdersData() {
+function getOrders(startDate, endDate, filterOption, offsetRow) {
+
+  const pageSize = 10
+  let orders = getPaginationedOrders(startDate, endDate, offsetRow, pageSize)
+  let data = []
+  orders.forEach((order)=>{
+    let orderProducts = findObjectsByValue("Order_Product", "orderId", order.id)
+    
+    data.push([
+      order.id,
+      order.time,
+      order.memberName,
+      order.memberEmail,
+      "",
+      "",
+      "",
+    ])
+    orderProducts.forEach((prod)=>{
+      let productName = findObjectByValue("Product", "id", prod.productId).name
+      data.push([
+        "",
+        "",
+        "",
+        "",
+        prod.optionEmail,
+        productName,
+        prod["delete"]
+      ])
+    })
+   
+  })
+
+  return data;
+}
+
+function getPaginationedOrders(startDate, endDate, offsetRow, pageSize){
   let scriptProperties = PropertiesService.getScriptProperties();
-  let spreadSheetId = scriptProperties.getProperty('spreadSheetId');
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
   let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
-  var ordersSheet = spreadsheet.getSheetByName("Order");
-  var membersSheet = spreadsheet.getSheetByName("Member");
-  var productsSheet = spreadsheet.getSheetByName("Product");
+  let orderSheet = spreadsheet.getSheetByName("Order")
 
-  var orders = ordersSheet.getDataRange().getValues();
-  var members = membersSheet.getDataRange().getValues();
-  var products = productsSheet.getDataRange().getValues();
+  let filteredOrders = [];
+  let startDateTimestamp = Date.parse(startDate);
+  let endDateTimestamp = Date.parse(endDate) + (24 * 60 * 60 * 1000);
 
-  // 회원 ID와 상품 ID를 기반으로 회원 정보와 상품 정보 매핑
-  var memberMap = new Map();
-  var productMap = new Map();
-
-  for (var i = 1; i < members.length; i++) { // 헤더 제외
-    memberMap.set(members[i][0].toString(), { name: members[i][1], email: members[i][2] });
-  }
-
-  for (var j = 1; j < products.length; j++) { // 헤더 제외
-    productMap.set(products[j][0].toString(), products[j][1]);
-  }
-
-  var orderData = [];
-  for (var k = 1; k < orders.length; k++) { // 헤더 및 타이틀 행 제외
-    var memberId = orders[k][2].toString();
-    var productId = orders[k][3].toString();
-    var memberInfo = memberMap.get(memberId);
-    var productName = productMap.get(productId);
-    if (memberInfo && productName) {
-      orderData.push({
-        row: k + 1,
-        memberName: memberInfo.name,
-        memberEmail: memberInfo.email,
-        productName: productName,
-        linkExpired: orders[k][7] === true
-      });
+  let orderFieldValues = makeFieldValues("Order")
+  let ordersData = orderSheet.getRange("B:B").getValues();
+  let lastRow = orderSheet.getLastRow()
+  for (let row = lastRow; row > 1; row--) {
+    let timeData = ordersData[row-1][0]
+    console.log("startDate", startDateTimestamp, "endDate", endDateTimestamp, "timeData", timeData)
+    if (timeData >= startDateTimestamp && timeData <= endDateTimestamp) {
+      let order = createObjectFromRow(orderSheet, row, orderFieldValues)
+      filteredOrders.push(order);
     }
   }
 
-  return orderData;
+  let pageOrders = filteredOrders //.slice(offset, offset + pageSize);
+  return pageOrders;
 }
 
 // 링크 상태 토글
-function toggleLinkStatus(row) {
+function changeLinkStatus(row, status) {
   let scriptProperties = PropertiesService.getScriptProperties();
   let spreadSheetId = scriptProperties.getProperty('spreadSheetId');
   let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
-  var sheet = spreadsheet.getSheetByName("Order");
-  var currentValue = sheet.getRange(row, 8).getValue(); // 8번째 열이 만료된 링크 상태
-  var newValue = !(currentValue === true);
-  sheet.getRange(row, 8).setValue(newValue ? true : false);
-  return { linkExpired: newValue };
+  var sheet = spreadsheet.getSheetByName("Order_Product");
+  const CANCEL_COLUMN = 4
+  sheet.getRange(row, CANCEL_COLUMN).setValue(status);
+  return { linkExpired: status };
+}
+
+function formatTimestamp(timestamp) {
+  var date = new Date(timestamp);
+  var year = date.getFullYear();
+  var month = ("0" + (date.getMonth() + 1)).slice(-2); // 월은 0부터 시작하므로 1을 더하고 2자리로 만듭니다.
+  var day = ("0" + date.getDate()).slice(-2); // 일은 2자리로 만듭니다.
+  var hours = ("0" + date.getHours()).slice(-2); // 시간은 2자리로 만듭니다.
+  var minutes = ("0" + date.getMinutes()).slice(-2); // 분은 2자리로 만듭니다.
+
+  var formattedTimestamp = year + "." + month + "." + day + " " + hours + ":" + minutes;
+  return formattedTimestamp;
 }

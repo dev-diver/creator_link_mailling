@@ -97,7 +97,6 @@ function importCancelOrders() {
 
 function deliverOrder(orderDetails, productDetails){
 
-  //let emails = new Set();
   let products = productDetails.map((prod)=>{
     let product = findProductById(prod.id)
     let files = product.files.map((file)=>{
@@ -107,14 +106,21 @@ function deliverOrder(orderDetails, productDetails){
         url
       }
     })
-    product.files = files
+    
+    product = {
+      ...prod,
+      ...product,
+      files:files
+    }
+    console.log("product", product)
     return product
   })
 
   let subject = "구매하신 상품입니다."
-  let template = HtmlService.createTemplateFromFile('emailAcceptTemplate')
+  let template = HtmlService.createTemplateFromFile('emailTemplate')
   template.order = orderDetails
   template.products = products;
+  template.cancel = false;
 
   let htmlBody = template.evaluate().getContent();
   console.log("send Email: ", orderDetails.memberEmail)
@@ -135,14 +141,21 @@ function cancelOrder(orderDetails, productDetails){
         url
       }
     })
+
+    product = {
+      ...prod,
+      ...product,
+      files:files
+    }
     product.files = files
     return product
   })
 
   let subject = "취소하신 상품입니다."
-  let template = HtmlService.createTemplateFromFile('emailCancelTemplate')
+  let template = HtmlService.createTemplateFromFile('emailTemplate')
   template.order = orderDetails
   template.products = products;
+  template.cancel = true;
 
   let htmlBody = template.evaluate().getContent();
   GmailApp.sendEmail(orderDetails.memberEmail, subject,"",{

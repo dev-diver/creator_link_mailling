@@ -1,13 +1,15 @@
 function parseOrderDetails(plainBody) {
-  var memberName = plainBody.match(/고객명 (.+)/) ? plainBody.match(/고객명 (.+)/)[1] : 'N/A';
-  var memberEmail = plainBody.match(/고객 메일 주소 (.+)/) ? plainBody.match(/고객 메일 주소 (.+)/)[1] : 'N/A';
-  var orderNumber = plainBody.match(/주문번호 (\d+)/) ? plainBody.match(/주문번호 (\d+)/)[1] : 'N/A';
-  var orderDate = plainBody.match(/주문일자\s+(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2})/) ? plainBody.match(/주문일자\s+(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2})/)[1] : 'N/A';
+  let memberName = plainBody.match(/고객명 (.+)/) ? plainBody.match(/고객명 (.+)/)[1] : 'N/A';
+  let memberEmail = plainBody.match(/고객 메일 주소 (.+)/) ? plainBody.match(/고객 메일 주소 (.+)/)[1] : 'N/A';
+  let orderNumber = plainBody.match(/주문번호 (\d+)/) ? plainBody.match(/주문번호 (\d+)/)[1] : 'N/A';
+  let orderDate = plainBody.match(/주문일자\s+(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2})/) ? plainBody.match(/주문일자\s+(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2})/)[1] : 'N/A';
+  let date = new Date(orderDate).getTime()
+  console.log("date", date)
   return {
     memberName,
     memberEmail,
     orderNumber,
-    orderDate,
+    orderDate: date
   };
 }
 

@@ -4,20 +4,8 @@ function findObjectByValue(objectClass, fieldName, searchValue) {
   let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
   let sheet = spreadsheet.getSheetByName(objectClass);
 
-  let firstRow = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0]
-  let fieldValues = []
-  let columnNum = 0;
-  for(let i = 0; i<firstRow.length; i++){
-    if(firstRow[i] === fieldName){
-      columnNum = i+1
-    }
-    if(firstRow[i] !== "" && firstRow[i] != null){
-      fieldValues.push(firstRow[i]);
-    }
-  }
-  if(columnNum == 0){
-    throw Error('no fieldName')
-  }
+  let columnNum = findFieldColumn(objectClass, fieldName)
+  let fieldValues = makeFieldValues(objectClass)
   
   let row = 0
   let lastRow = sheet.getLastRow()
@@ -38,21 +26,9 @@ function findObjectsByValue(objectClass, fieldName, searchValue) {
   let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
   let sheet = spreadsheet.getSheetByName(objectClass);
 
-  let firstRow = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0]
-  let fieldValues = []
-  let columnNum = 0;
-  for(let i = 0; i<firstRow.length; i++){
-    if(firstRow[i] === fieldName){
-      columnNum = i+1
-    }
-    if(firstRow[i] !== "" && firstRow[i] != null){
-      fieldValues.push(firstRow[i]);
-    }
-  }
-  if(columnNum == 0){
-    throw Error('no fieldName')
-  }
-  
+  let columnNum = findFieldColumn(objectClass, fieldName)
+  let fieldValues = makeFieldValues(objectClass)
+
   let rows = []
   let lastRow = sheet.getLastRow()
   let range = sheet.getRange(1, columnNum, lastRow, 1); // 검색할 열의 전체 범위
@@ -102,6 +78,41 @@ function findProductById(productId){
   product.files = files
   console.log(product)
   return product
+}
+
+function makeFieldValues(objectClass){ //createObjectFromRow 밑으로 넣기
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId');
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  let sheet = spreadsheet.getSheetByName(objectClass);
+
+  let firstRow = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0]
+  let fieldValues = []
+  for(let i = 0; i<firstRow.length; i++){
+    if(firstRow[i] !== "" && firstRow[i] != null){
+      fieldValues.push(firstRow[i]);
+    }
+  }
+  return fieldValues
+}
+
+function findFieldColumn(objectClass, fieldName){ //createObjectFromRow 밑으로 넣기
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId');
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  let sheet = spreadsheet.getSheetByName(objectClass);
+
+  let firstRow = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0]
+  let columnNum = 0;
+  for(let i = 0; i<firstRow.length; i++){
+    if(firstRow[i] === fieldName){
+      columnNum = i+1
+    }
+  }
+  if(columnNum == 0){
+    throw Error('no fieldName')
+  }
+  return columnNum
 }
 
 
