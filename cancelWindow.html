@@ -3,11 +3,6 @@
   <head>
     <base target="_top">
     <style>
-      /* body {
-        padding:1.5em;
-        background: #f5f5f5
-      } */
-
       table {
         border: 1px #a39485 solid;
         font-size: .9em;
@@ -22,12 +17,6 @@
         text-align: left;
       }
         
-      /* thead {
-        font-weight: bold;
-        color: #fff;
-        background: #73685d;
-      } */
-        
       td, th {
         padding: 1em .5em;
         vertical-align: middle;
@@ -35,8 +24,16 @@
         
       td {
         border-bottom: 1px solid rgba(0,0,0,.1);
+      }
+
+      .order {
+        background: rgba(125,125,125,.1);
+      }
+
+      .product {
         background: #fff;
       }
+
     </style>
   </head>
   <body>
@@ -48,7 +45,7 @@
         <input type="date" id="endDate" name="endDate">
       </div>
       <div>
-        <input type="radio" id="allStatus" name="shareStatus" value="total" />
+        <input type="radio" id="allStatus" name="shareStatus" value="total" checked/>
         <label for="allStatus">전체</label>
 
         <input type="radio" id="sendStatus" name="shareStatus" value="share" />
@@ -59,6 +56,8 @@
       </div>
       <div>
         <button type="submit" id="submitButton">불러오기</button>
+        <button id="prevPageButton">이전 페이지</button>
+        <button id="nextPageButton">다음 페이지</button>
       </div>
     </form>
     <table id="ordersTable">
@@ -69,12 +68,29 @@
         <th>메일 주소</th>
         <th>배송 주소</th>
         <th>상품명</th>
-        <th>링크상태</th>
-        <th>액션</th>
+        <th>취소여부</th>
+        <th>재전송</th>
+        <th>전송취소</th>
       </tr>
     </table>
     <div id="loadingMessage" style="display: none;">Loading...</div>
     <script>
+
+      function getTodayDate() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0'); // 월은 0부터 시작하므로 1을 더해줌
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+
+      let pageOffsets = [0];
+      let pageNumber = 1;
+      let orders = []
+
+      // 시작 날짜와 종료 날짜 필드에 오늘 날짜를 기본값으로 설정
+      document.getElementById('startDate').value = getTodayDate();
+      document.getElementById('endDate').value = getTodayDate();
 
       document.addEventListener('DOMContentLoaded', function() {
         var today = new Date().toISOString().split('T')[0];
@@ -86,17 +102,44 @@
         let loadingMessage = document.getElementById('loadingMessage');
         loadingMessage.style.display = '';
         event.preventDefault();
-        loadTableData();
-        
+        loadTableData(0); //0이면 맨 아래
       });
 
-      function loadTableData() {
+      document.getElementById('prevPageButton').addEventListener('click', function(event) {
+        event.preventDefault();
+        if (pageOffsets.length > 1) {
+            pageOffsets.pop(); // 현재 페이지의 오프셋 제거
+            loadTableData(pageOffsets[pageOffsets.length - 1]); // 이전 페이지의 오프셋으로 데이터를 로드
+        }
+      });
+
+      document.getElementById('nextPageButton').addEventListener('click', function(event) {
+        event.preventDefault();
+        let nextPageOffset = getNextPageOffset();
+        pageOffsets.push(nextPageOffset); // 다음 페이지의 오프셋 추가
+        loadTableData(nextPageOffset); // 다음 페이지의 데이터를 로드
+      });
+
+      function getNextPageOffset(orders) {
+          let lastOrderRowIndex = -1;
+          
+          // orders 배열을 뒤에서부터 순회하며 "order"를 가지는 마지막 요소의 index를 찾습니다.
+          for (let i = orders.length - 1; i >= 0; i--) {
+              if (orders[i].type === "order") {
+                  lastOrderRowIndex = orders[i].row;
+                  break; // "order"를 찾았으므로 순회를 종료합니다.
+              }
+          }
+          return lastOrderRowIndex;
+      }
+
+      function loadTableData(offsetRow) {
         // 시작 날짜, 종료 날짜, 상태 가져오기
         let startDate = document.getElementById('startDate').value;
         let endDate = document.getElementById('endDate').value;
         let shareStatus = document.querySelector('input[name="shareStatus"]:checked').value;
-        let offsetRow = 0
         google.script.run.withSuccessHandler((data)=>{
+          orders = data;
           buildTable(data);
           let loadingMessage = document.getElementById('loadingMessage');
           loadingMessage.style.display = 'none';
@@ -118,33 +161,101 @@
         var table = document.getElementById('ordersTable');
         orders.forEach(function(order) {
           var row = table.insertRow(-1); // 테이블 끝에 새로운 행 삽입
-          
-          let i = 0
-          let cells = []
-          for (const key in order) {
-            if (order.hasOwnProperty(key)) {
-              let cell = row.insertCell(i)
-              cells.push(cell)
-              cell.textContent = order[key]
-              i++;
+          row.classList.add(order.type)
+
+          let fieldInOrder = []
+          if( order.type === "order"){
+            fieldInOrder =  ["orderId", "orderTime","orderMemberName","orderMemeberEmail","",""]
+          }else if( order.type === "product"){
+            fieldInOrder = ["","","","","optionEmail","productName"]
+          }
+          fieldInOrder.forEach((field)=>{
+            let cell = row.insertCell()
+            if (order.hasOwnProperty(field)) {
+              cell.textContent = order[field]
+            }
+          })
+
+          console.log("order",order)
+
+          //공유 여부
+          if (order.type =="product"){
+            let cell = row.insertCell()
+            cell.innerHTML = `<span id="linkStatus${order.row}" style="color:${order.deleteStatus ? "red":"green"}">${order.deleteStatus ? '취소' : '배송'}</span>`;
+            //재전송 버튼
+            cell = row.insertCell()
+            cell.innerHTML = `<button id="resendButton${order.row}">재전송</button>`
+            document.getElementById('resendButton'+ order.row).addEventListener('click', function(event) {
+                sendShareEmail(order, event);
+            });
+
+            //취소 버튼
+            cell = row.insertCell()
+            cell.innerHTML = `<button id="cancelButton${order.row}">취소</button>`;
+            document.getElementById('cancelButton'+ order.row).addEventListener('click', function(event) {
+                sendUnshareEmail(order, event);
+            });
+          }else{
+            for(let i=0;i<3;i++){
+              row.insertCell()
             }
           }
-          // if(order[""])
-          cells[i-1].innerHTML = `<span id="linkStatus${order.row}" style="color:${order.linkExpired ? "red":"green"}">${order.linkExpired ? '만료' : '유효'}</span>`;
-          let cell = row.insertCell(i)
-          cell.innerHTML = `<button onclick="toggleLinkStatusInSheet(${order.row}, event)">${order.linkExpired ? '복구' : '취소'}</button>`;
+
         });
       }
 
-      // 링크 상태 토글
-      function toggleLinkStatusInSheet(row, event) {
+      function sendShareEmail(order, event) {
+        let row = order.row
+
+        let orderDetail =  {
+          orderNumber: order.orderId,
+          orderDate: order.orderTime,
+          memberName: order.orderMemberName,
+          memberEmail: order.orderMemberEmail
+        }
+
+        let productDetails = [{
+          name : order.productName,
+          imgSrc : order.productImgSrc,
+          email : order.optionEmail
+        }]
+
+        event.target.disabled = true
         google.script.run.withSuccessHandler(function(result) {
-          var linkStatusElement = document.getElementById('linkStatus' + row);
-          linkStatusElement.textContent = result.linkExpired ? '만료' : '유효';
-          linkStatusElement.style.color = result.linkExpired ? "red" : "green"; 
-          event.target.textContent = result.linkExpired ? '복구' : '취소';
-        }).toggleLinkStatus(row);
+          //TODO: 성공 여부 처리
+          let linkStatusElement = document.getElementById('linkStatus' + row);
+          linkStatusElement.textContent = "배송";
+          linkStatusElement.style.color ="green"; 
+          event.target.disabled = false
+        }).deliverAndSaveOrder(orderDetail, productDetails);
       }
+
+      function sendUnshareEmail(order, event) {
+        let row = order.row
+
+         let orderDetail =  {
+          orderNumber: order.orderId,
+          orderDate: order.orderTime,
+          memberName: order.orderMemberName,
+          memberEmail: order.orderMemberEmail
+        }
+
+        let productDetails = [{
+          name : order.productName,
+          imgSrc : order.productImgSrc,
+          email : order.optionEmail
+        }]
+
+        event.target.disabled = true
+        google.script.run.withSuccessHandler(function(result) {
+          //TODO: 성공 여부 처리
+          let linkStatusElement = document.getElementById('linkStatus' + row);
+          linkStatusElement.textContent = "취소";
+          linkStatusElement.style.color = "red";
+          event.target.disabled = false
+        }).deliverAndSaveCancelOrder(orderDetail, productDetails);
+      }
+
     </script>
   </body>
 </html>

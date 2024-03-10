@@ -31,7 +31,7 @@ function findOrUpdateProduct(productDetail) {
   }
 }
 
-function saveOrder(orderDetails) {
+function saveOrder(orderDetail) {
   // 0) "주문"이라는 활성화된 시트 가져오기
   let scriptProperties = PropertiesService.getScriptProperties();
   let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
@@ -40,21 +40,29 @@ function saveOrder(orderDetails) {
 
   // 1) 스프레드시트에 제목 행 추가
   if (orderSheet.getLastRow() == 0) { // 스프레드시트가 비어있으면 제목 행 추가
-    orderSheet.appendRow(["id", "time","memberName", "memberEmail","delivered"]); // 제목 행
+    orderSheet.appendRow(["id", "time","memberName", "memberEmail","delivered","cancel"]); // 제목 행
   }
 
-  // 2) 파싱된 정보를 스프레드시트에 추가
-  orderSheet.appendRow([
-    orderDetails.orderNumber, // 주문번호
-    orderDetails.orderDate, // 주문시간
-    orderDetails.memberName,
-    orderDetails.memberEmail,
-    true,
-  ]);
-
+  let orderId = orderDetail.orderNumber
+  let order = findObjectByValue("Order", "id" , orderId);
+  
+  if(!order){
+    // 2) 파싱된 정보를 스프레드시트에 추가
+    orderSheet.appendRow([
+      orderDetail.orderNumber, // 주문번호
+      orderDetail.orderDate, // 주문시간
+      orderDetail.memberName,
+      orderDetail.memberEmail,
+      true,
+      false
+    ]);
+  }else{
+    const CANCEL_COLUMN = 6
+    orderSheet.getRange(order.row, CANCEL_COLUMN).setValue(false)
+  }
 }
 
-function saveOrderProduct(orderDetails, productDetails) {
+function saveOrderProduct(orderDetail, productDetails) {
   // 0) "주문"이라는 활성화된 시트 가져오기
   let scriptProperties = PropertiesService.getScriptProperties();
   let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
@@ -66,26 +74,40 @@ function saveOrderProduct(orderDetails, productDetails) {
   }
 
   productDetails.forEach((prod)=>{
-    let id = generateNewId("order_product")
-    orderProductSheet.appendRow([
-      id,
-      orderDetails.orderNumber,
-      prod.id,
-      prod.email,
-      false
-    ])
+
+    let recordProd = findObjectByValue("order_product","productId",prod.id);
+    
+    if(recordProd){
+      let id = generateNewId("order_product")
+      let fail = prod.email==""
+      console.log("fail", prod.email ,fail ? true : false)
+      orderProductSheet.appendRow([
+        id,
+        orderDetail.orderNumber,
+        prod.id,
+        prod.email,
+        fail ? true : false
+      ])
+    }else{
+      const DELETE_COLUMN = 5
+      orderProductSheet.getRange(recordProd.row, DELETE_COLUMN).setValue(false)
+    }
+
+    
   })
   
 }
 
-function updateDeleteOrderProduct(orderDetails, productDetails, deleteFlag) {
+function updateDeleteOrderProduct(orderDetail, productDetails, deleteFlag) {
   let scriptProperties = PropertiesService.getScriptProperties();
   let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
   let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
-  let sheet = spreadsheet.getSheetByName("Order_Product");
+  let orderProductSheet = spreadsheet.getSheetByName("Order_Product");
+  let orderSheet = spreadsheet.getSheetByName("Order")
 
-  let orderId = orderDetails.orderNumber
+  let orderId = orderDetail.orderNumber
   const DELETE_COLUMN = 5
+  const CANCEL_COLUMN = 6
 
   let deleteIds = productDetails.map((prod)=>{
     return prod.id
@@ -93,7 +115,14 @@ function updateDeleteOrderProduct(orderDetails, productDetails, deleteFlag) {
   console.log("deleteIds", deleteIds, "orderId", orderId)
 
   let products = findObjectsByValue("Order_Product", "orderId", orderId)
+  let order = findObjectByValue("Order", "id" , orderId);
 
+  if(order){
+    orderSheet.getRange(order.row, CANCEL_COLUMN).setValue(deleteFlag)
+  }else{
+    throw Error("no Order with id:", orderId)
+  }
+  
   products = products
   .filter((prod)=>{
     console.log(prod.id)
@@ -101,7 +130,6 @@ function updateDeleteOrderProduct(orderDetails, productDetails, deleteFlag) {
   })
 
   products.forEach((prod) => {
-    sheet.getRange(prod.row, DELETE_COLUMN).setValue(deleteFlag)
+    orderProductSheet.getRange(prod.row, DELETE_COLUMN).setValue(deleteFlag)
   })
-
 }

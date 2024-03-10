@@ -2,32 +2,39 @@
 // 주문 데이터 및 관련 회원 및 상품 정보 가져오기
 function getOrders(startDate, endDate, filterOption, offsetRow) {
 
-  const pageSize = 10
-  let orders = getPaginationedOrders(startDate, endDate, offsetRow, pageSize)
+  const pageSize = 20
+  let orders = getPaginationedOrders(startDate, endDate, filterOption, offsetRow, pageSize)
   let data = []
   orders.forEach((order)=>{
     let orderProducts = findObjectsByValue("Order_Product", "orderId", order.id)
     
-    data.push([
-      order.id,
-      order.time,
-      order.memberName,
-      order.memberEmail,
-      "",
-      "",
-      "",
-    ])
+    data.push({
+      type:"order",
+
+      orderId: order.id,
+      orderTime: formatTimestamp(order.time),
+      orderMemberName: order.memberName,
+      orderMemberEmail: order.memberEmail,
+
+      deliverStatus: order.delivered,
+      cancelStatus: order.cancel
+  })
+
     orderProducts.forEach((prod)=>{
-      let productName = findObjectByValue("Product", "id", prod.productId).name
-      data.push([
-        "",
-        "",
-        "",
-        "",
-        prod.optionEmail,
-        productName,
-        prod["delete"]
-      ])
+      let recordProd = findObjectByValue("Product", "id", prod.productId)
+      data.push({
+        type: "product",
+
+        orderId: order.id,
+        orderTime: formatTimestamp(order.time),
+        orderMemberName: order.memberName,
+        orderMemberEmail: order.memberEmail,
+
+        optionEmail: prod.optionEmail,
+        productName: recordProd.name,
+        productImgSrc: recordProd.imgSrc,
+        deleteStatus: prod["delete"]
+      })
     })
    
   })
@@ -35,7 +42,7 @@ function getOrders(startDate, endDate, filterOption, offsetRow) {
   return data;
 }
 
-function getPaginationedOrders(startDate, endDate, offsetRow, pageSize){
+function getPaginationedOrders(startDate, endDate, filterOption, lastSearchedRow, pageSize){
   let scriptProperties = PropertiesService.getScriptProperties();
   let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
   let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
@@ -47,11 +54,31 @@ function getPaginationedOrders(startDate, endDate, offsetRow, pageSize){
 
   let orderFieldValues = makeFieldValues("Order")
   let ordersData = orderSheet.getRange("B:B").getValues();
-  let lastRow = orderSheet.getLastRow()
-  for (let row = lastRow; row > 1; row--) {
+  let canceledData = orderSheet.getRange("F:F").getValues();
+  let startSearchingRow = orderSheet.getLastRow() + 1
+  
+  if(lastSearchedRow!=0){
+    startSearchingRow = lastSearchedRow-1
+  }
+
+  function checkFilter(filterOption, value){
+    switch (filterOption) {
+      case 'total':
+        return true;
+      case 'share':
+        return value==false ? true : false
+      case 'cancel':
+        return value==true ? true : false
+      default:
+        return true;
+    }
+  }
+
+  for (let row = startSearchingRow; row > 1 && filteredOrders.length<pageSize; row--) {
     let timeData = ordersData[row-1][0]
+    let canceled = canceledData[row-1][0]
     console.log("startDate", startDateTimestamp, "endDate", endDateTimestamp, "timeData", timeData)
-    if (timeData >= startDateTimestamp && timeData <= endDateTimestamp) {
+    if (timeData >= startDateTimestamp && timeData <= endDateTimestamp && checkFilter(filterOption, canceled)) {
       let order = createObjectFromRow(orderSheet, row, orderFieldValues)
       filteredOrders.push(order);
     }
@@ -59,17 +86,6 @@ function getPaginationedOrders(startDate, endDate, offsetRow, pageSize){
 
   let pageOrders = filteredOrders //.slice(offset, offset + pageSize);
   return pageOrders;
-}
-
-// 링크 상태 토글
-function changeLinkStatus(row, status) {
-  let scriptProperties = PropertiesService.getScriptProperties();
-  let spreadSheetId = scriptProperties.getProperty('spreadSheetId');
-  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
-  var sheet = spreadsheet.getSheetByName("Order_Product");
-  const CANCEL_COLUMN = 4
-  sheet.getRange(row, CANCEL_COLUMN).setValue(status);
-  return { linkExpired: status };
 }
 
 function formatTimestamp(timestamp) {

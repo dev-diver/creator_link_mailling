@@ -13,7 +13,8 @@ function showDialog() {
 function importOrders() {
 
   let scriptProperties = PropertiesService.getScriptProperties();
-  let recentMailId = ""//scriptProperties.getProperty('recentMailId')
+  let recentMailId = scriptProperties.getProperty('recentMailId')
+  console.log("recentMailId:", recentMailId);
 
   let query = "from:(aaf) subject:`주문이 접수되었습니다.`";
   let pageToken;
@@ -30,7 +31,7 @@ function importOrders() {
         firstMsgId = threadList.messages[0].id
       }
       threadList.messages.forEach((msg,i)=>{
-        if(flag && msg.id==recentMailId){
+        if(msg.id == recentMailId){
           flag=true
           return;
         }
@@ -38,25 +39,25 @@ function importOrders() {
         var plainBody = message.getPlainBody();
         var htmlBody = message.getBody();
         var mailRoot = getMailRoot(htmlBody);
-        var orderDetails = parseOrderDetails(plainBody); //memberName,memberEmail,orderNumber,orderDate,
+        var orderDetail = parseOrderDetail(plainBody); //memberName,memberEmail,orderNumber,orderDate,
         var productDetails = parseProductDetails(mailRoot);
-        var updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
         
-        deliverOrder(orderDetails,updateProductDetails)
-        saveOrder(orderDetails)
-        saveOrderProduct(orderDetails, updateProductDetails); // Orders.gs에서 함수 호출
+        deliverAndSaveOrder(orderDetail, productDetails)
       })
     }
     flag = true //임시
     pageToken = threadList.nextPageToken;
   } while(!flag && pageToken);
+
+  console.log("save recentMailId:", firstMsgId);
   scriptProperties.setProperty('recentMailId', firstMsgId)
 }
 
 function importCancelOrders() {
 
   let scriptProperties = PropertiesService.getScriptProperties();
-  let recentMailId = ""//scriptProperties.getProperty('recentCanceledMailId')
+  let recentMailId = scriptProperties.getProperty('recentCanceledMailId')
+  console.log("recentCanceledMailId:", recentMailId);
 
   let query = "from:(aaf) subject:`취소 요청이 접수되었습니다.`";
   let pageToken;
@@ -73,7 +74,7 @@ function importCancelOrders() {
         firstMsgId = threadList.messages[0].id
       }
       threadList.messages.forEach((msg,i)=>{
-        if(flag && msg.id==recentMailId){
+        if(msg.id==recentMailId){
           flag = true
           return;
         }
@@ -81,21 +82,46 @@ function importCancelOrders() {
         var plainBody = message.getPlainBody();
         var htmlBody = message.getBody();
         var mailRoot = getMailRoot(htmlBody);
-        var orderDetails = parseOrderDetails(plainBody);
+        var orderDetail = parseOrderDetail(plainBody);
         var productDetails = parseProductDetails(mailRoot);
 
-        var updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
-        cancelOrder(orderDetails,updateProductDetails)
-        updateDeleteOrderProduct(orderDetails, updateProductDetails, true); // Orders.gs에서 함수 호출
+        deliverAndSaveCancelOrder(orderDetail, productDetails)
       })
     }
     flag = true //임시
     pageToken = threadList.nextPageToken;
   } while(!flag && pageToken);
+
+  console.log("save recentCanceledMailId:", firstMsgId);
   scriptProperties.setProperty('recentCanceledMailId', firstMsgId)
 }
 
-function deliverOrder(orderDetails, productDetails){
+function deliverAndSaveOrder(orderDetail, productDetails){
+  try{
+    let updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
+    updateProductDetails = deliverOrder(orderDetail,updateProductDetails)
+    saveOrder(orderDetail)
+    saveOrderProduct(orderDetail, updateProductDetails); // Orders.gs에서 함수 호출
+    return true
+  }catch(e){
+    console.error(e)
+    return false
+  }
+}
+
+function deliverAndSaveCancelOrder(orderDetail, productDetails){
+  try{
+    let updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
+    cancelOrder(orderDetail,updateProductDetails)
+    updateDeleteOrderProduct(orderDetail, updateProductDetails, true); // Orders.gs에서 함수 호출
+    return true
+  }catch(e){
+    console.error(e)
+    return false
+  }
+}
+
+function deliverOrder(orderDetail, productDetails){
 
   let products = productDetails.map((prod)=>{
     let product = findProductById(prod.id)
@@ -106,7 +132,8 @@ function deliverOrder(orderDetails, productDetails){
         url
       }
     })
-    
+
+    //file 전송 에러에 대한 처리
     product = {
       ...prod,
       ...product,
@@ -118,16 +145,17 @@ function deliverOrder(orderDetails, productDetails){
 
   let subject = "구매하신 상품입니다."
   let template = HtmlService.createTemplateFromFile('emailTemplate')
-  template.order = orderDetails
+  template.order = orderDetail
   template.products = products;
   template.cancel = false;
 
   let htmlBody = template.evaluate().getContent();
-  console.log("send Email: ", orderDetails.memberEmail)
-  GmailApp.sendEmail(orderDetails.memberEmail, subject,"",{
+  console.log("send Email: ", orderDetail.memberEmail)
+  GmailApp.sendEmail(orderDetail.memberEmail, subject,"",{
     name: 'AAF',
     htmlBody: htmlBody
   });
+  return products
 }
 
 function cancelOrder(orderDetails, productDetails){

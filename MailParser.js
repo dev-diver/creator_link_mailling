@@ -1,4 +1,4 @@
-function parseOrderDetails(plainBody) {
+function parseOrderDetail(plainBody) {
   let memberName = plainBody.match(/고객명 (.+)/) ? plainBody.match(/고객명 (.+)/)[1] : 'N/A';
   let memberEmail = plainBody.match(/고객 메일 주소 (.+)/) ? plainBody.match(/고객 메일 주소 (.+)/)[1] : 'N/A';
   let orderNumber = plainBody.match(/주문번호 (\d+)/) ? plainBody.match(/주문번호 (\d+)/)[1] : 'N/A';
@@ -6,10 +6,10 @@ function parseOrderDetails(plainBody) {
   let date = new Date(orderDate).getTime()
   console.log("date", date)
   return {
-    memberName,
-    memberEmail,
     orderNumber,
-    orderDate: date
+    orderDate: date,
+    memberName,
+    memberEmail
   };
 }
 
