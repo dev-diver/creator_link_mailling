@@ -62,6 +62,25 @@ function saveOrder(orderDetail) {
   }
 }
 
+function recoverOrder(orderDetail, recover) {
+  if(!recover){return}
+  // 0) "주문"이라는 활성화된 시트 가져오기
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  let orderSheet = spreadsheet.getSheetByName("Order");
+
+  let orderId = orderDetail.orderNumber
+  let order = findObjectByValue("Order", "id" , orderId);
+  
+  if(!order){
+    throw Error('주문 없음')
+  }else{
+    const CANCEL_COLUMN = 6
+    orderSheet.getRange(order.row, CANCEL_COLUMN).setValue(false)
+  }
+}
+
 function saveOrderProduct(orderDetail, productDetails) {
   // 0) "주문"이라는 활성화된 시트 가져오기
   let scriptProperties = PropertiesService.getScriptProperties();
@@ -75,9 +94,9 @@ function saveOrderProduct(orderDetail, productDetails) {
 
   productDetails.forEach((prod)=>{
 
-    let recordProd = findObjectByValue("order_product","productId",prod.id);
+    let recordProd = findObjectByValue("Order_Product","productId",prod.id);
     
-    if(recordProd){
+    if(!recordProd){
       let id = generateNewId("order_product")
       let fail = prod.email==""
       console.log("fail", prod.email ,fail ? true : false)
@@ -92,10 +111,7 @@ function saveOrderProduct(orderDetail, productDetails) {
       const DELETE_COLUMN = 5
       orderProductSheet.getRange(recordProd.row, DELETE_COLUMN).setValue(false)
     }
-
-    
   })
-  
 }
 
 function updateDeleteOrderProduct(orderDetail, productDetails, deleteFlag) {
@@ -132,4 +148,61 @@ function updateDeleteOrderProduct(orderDetail, productDetails, deleteFlag) {
   products.forEach((prod) => {
     orderProductSheet.getRange(prod.row, DELETE_COLUMN).setValue(deleteFlag)
   })
+}
+
+function recoverOrderProduct(orderDetail, productDetails) {
+  // 0) "주문"이라는 활성화된 시트 가져오기
+  const DELETE_COLUMN = 5
+
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  let orderProductSheet = spreadsheet.getSheetByName("Order_Product")
+
+  if(orderProductSheet.getLastRow() == 0){
+    orderProductSheet.appendRow(['id', "orderId", "productId", "optionEmail", "delete"])
+  }
+
+  productDetails.forEach((prod)=>{
+    let recordProd = findObjectByValue("Order_Product","productId",prod.id);
+    
+    if(!recordProd){
+      let id = generateNewId("order_product")
+      let fail = prod.email==""
+      console.log("fail", prod.email ,fail ? true : false)
+      orderProductSheet.appendRow([
+        id,
+        orderDetail.orderNumber,
+        prod.id,
+        prod.email,
+        fail ? true : false
+      ])
+    }else{
+      
+      orderProductSheet.getRange(recordProd.row, DELETE_COLUMN).setValue(false)
+    }
+  })
+  let recover = isAllOrderProductDelivered(orderDetail.orderNumber)
+  recoverOrder(orderDetail, recover)
+}
+
+function isAllOrderProductDelivered(orderId){
+  const DELETE_COLUMN = 5
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
+  let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
+  let orderProductSheet = spreadsheet.getSheetByName("Order_Product")
+
+  let orderProducts = findObjectsByValue("Order_Product", "orderId", orderId)
+  let recover = orderProducts.every((orderProd)=>{
+    let recordProd = findObjectByValue("Order_Product","productId",orderProd.productId);
+    if(!recordProd){
+      throw Error('product 없음')
+    }else{
+      let r = !orderProductSheet.getRange(recordProd.row, DELETE_COLUMN).getValue()
+      console.log("prod 검사", recordProd.row, r)
+      return r
+    }
+  })
+  return recover
 }

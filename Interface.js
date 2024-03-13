@@ -2,7 +2,7 @@
 // 주문 데이터 및 관련 회원 및 상품 정보 가져오기
 function getOrders(startDate, endDate, filterOption, offsetRow) {
 
-  const pageSize = 20
+  const pageSize = 1
   let orders = getPaginationedOrders(startDate, endDate, filterOption, offsetRow, pageSize)
   let data = []
   orders.forEach((order)=>{
@@ -15,9 +15,9 @@ function getOrders(startDate, endDate, filterOption, offsetRow) {
       orderTime: formatTimestamp(order.time),
       orderMemberName: order.memberName,
       orderMemberEmail: order.memberEmail,
-
       deliverStatus: order.delivered,
-      cancelStatus: order.cancel
+      cancelStatus: order.cancel,
+      orderRow:order.row
   })
 
     orderProducts.forEach((prod)=>{
@@ -29,11 +29,13 @@ function getOrders(startDate, endDate, filterOption, offsetRow) {
         orderTime: formatTimestamp(order.time),
         orderMemberName: order.memberName,
         orderMemberEmail: order.memberEmail,
-
+        orderRow:order.row,
+        
         optionEmail: prod.optionEmail,
         productName: recordProd.name,
         productImgSrc: recordProd.imgSrc,
-        deleteStatus: prod["delete"]
+        deleteStatus: prod["delete"],
+        prodRow:recordProd.row,
       })
     })
    

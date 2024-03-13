@@ -10,28 +10,46 @@ function showDialog() {
   SpreadsheetApp.getUi().showModelessDialog(html, '주문 상태');
 }
 
-function importOrders() {
-
+function processOrderes(){
   let scriptProperties = PropertiesService.getScriptProperties();
-  let recentMailId = scriptProperties.getProperty('recentMailId')
-  console.log("recentMailId:", recentMailId);
+  let recentMessageId = scriptProperties.getProperty('recentMessageId')
+  console.log("recentMessageId:", recentMessageId);
 
+  recentMessageId = importOrders(recentMessageId)
+
+  console.log("save recentMessageId:", recentMessageId);
+  scriptProperties.setProperty('recentMessageId', recentMessageId)
+}
+
+function processCancelOrderes(){
+  let scriptProperties = PropertiesService.getScriptProperties();
+  let recentCancelMessageId = scriptProperties.getProperty('recentCancelMessageId')
+  console.log("recentMessageId:", recentCancelMessageId);
+
+  recentCancelMessageId = importCancelOrders(recentCancelMessageId)
+
+  console.log("save recentMessageId:", recentCancelMessageId);
+  scriptProperties.setProperty('recentCancelMessageId', recentCancelMessageId)
+}
+
+function importOrders(recentMessageId) {
   let query = "from:(aaf) subject:`주문이 접수되었습니다.`";
   let pageToken;
   let flag = false;
-  let firstMsgId = ''
+  let firstMessageId = ''
+  tasks = [];
   do{
     let threadList = Gmail.Users.Messages.list('me', {
       q: query,
       pageToken:pageToken,
-      maxResults:1
+      maxResults:10
     });
     if(threadList.messages.length > 0){
-      if(!firstMsgId){
-        firstMsgId = threadList.messages[0].id
+      if(!firstMessageId){
+        firstMessageId = threadList.messages[0].id
       }
       threadList.messages.forEach((msg,i)=>{
-        if(msg.id == recentMailId){
+        if(msg.id == recentMessageId){
           flag=true
           return;
         }
@@ -41,28 +59,23 @@ function importOrders() {
         var mailRoot = getMailRoot(htmlBody);
         var orderDetail = parseOrderDetail(plainBody); //memberName,memberEmail,orderNumber,orderDate,
         var productDetails = parseProductDetails(mailRoot);
-        
-        deliverAndSaveOrder(orderDetail, productDetails)
+        tasks.push({orderDetail,productDetails})
       })
     }
     flag = true //임시
     pageToken = threadList.nextPageToken;
   } while(!flag && pageToken);
-
-  console.log("save recentMailId:", firstMsgId);
-  scriptProperties.setProperty('recentMailId', firstMsgId)
+  tasks.reverse().forEach((task)=>{
+    deliverAndSaveOrder(task.orderDetail, task.productDetails)
+  })
+  return firstMessageId
 }
 
-function importCancelOrders() {
-
-  let scriptProperties = PropertiesService.getScriptProperties();
-  let recentMailId = scriptProperties.getProperty('recentCanceledMailId')
-  console.log("recentCanceledMailId:", recentMailId);
-
+function importCancelOrders(recentCancelMessageId) {
   let query = "from:(aaf) subject:`취소 요청이 접수되었습니다.`";
   let pageToken;
   let flag = false;
-  let firstMsgId = ''
+  let firstMessageId = ''
   do{
     let threadList = Gmail.Users.Messages.list('me', {
       q: query,
@@ -70,11 +83,11 @@ function importCancelOrders() {
       maxResults:1
     });
     if(threadList.messages.length > 0){
-      if(!firstMsgId){
-        firstMsgId = threadList.messages[0].id
+      if(!firstMessageId){
+        firstMessageId = threadList.messages[0].id
       }
       threadList.messages.forEach((msg,i)=>{
-        if(msg.id==recentMailId){
+        if(msg.id==recentCancelMessageId){
           flag = true
           return;
         }
@@ -92,8 +105,7 @@ function importCancelOrders() {
     pageToken = threadList.nextPageToken;
   } while(!flag && pageToken);
 
-  console.log("save recentCanceledMailId:", firstMsgId);
-  scriptProperties.setProperty('recentCanceledMailId', firstMsgId)
+  return firstMessageId
 }
 
 function deliverAndSaveOrder(orderDetail, productDetails){
@@ -114,6 +126,18 @@ function deliverAndSaveCancelOrder(orderDetail, productDetails){
     let updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
     cancelOrder(orderDetail,updateProductDetails)
     updateDeleteOrderProduct(orderDetail, updateProductDetails, true); // Orders.gs에서 함수 호출
+    return true
+  }catch(e){
+    console.error(e)
+    return false
+  }
+}
+
+function deliverAndRecoverOrder(orderDetail, productDetails){
+  try{
+    let updateProductDetails = productDetails.map(productDetail => findOrUpdateProduct(productDetail)); // Products.gs에서 함수 호출
+    updateProductDetails = deliverOrder(orderDetail,updateProductDetails)
+    recoverOrderProduct(orderDetail, updateProductDetails); // Orders.gs에서 함수 호출
     return true
   }catch(e){
     console.error(e)
