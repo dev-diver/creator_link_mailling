@@ -1,15 +1,25 @@
 /***** Modeless Dialog ******/
 // 주문 데이터 및 관련 회원 및 상품 정보 가져오기
 function getOrders(startDate, endDate, filterOption, offsetRow) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const pageSize = scriptProperties.getProperty("pageSize");
+  let orders = getPaginationedOrders(
+    startDate,
+    endDate,
+    filterOption,
+    offsetRow,
+    pageSize
+  );
+  let data = [];
+  orders.forEach((order) => {
+    let orderProducts = findObjectsByValue(
+      "Order_Product",
+      "orderId",
+      order.id
+    );
 
-  const pageSize = 1
-  let orders = getPaginationedOrders(startDate, endDate, filterOption, offsetRow, pageSize)
-  let data = []
-  orders.forEach((order)=>{
-    let orderProducts = findObjectsByValue("Order_Product", "orderId", order.id)
-    
     data.push({
-      type:"order",
+      type: "order",
 
       orderId: order.id,
       orderTime: formatTimestamp(order.time),
@@ -17,11 +27,11 @@ function getOrders(startDate, endDate, filterOption, offsetRow) {
       orderMemberEmail: order.memberEmail,
       deliverStatus: order.delivered,
       cancelStatus: order.cancel,
-      orderRow:order.row
-  })
+      orderRow: order.row,
+    });
 
-    orderProducts.forEach((prod)=>{
-      let recordProd = findObjectByValue("Product", "id", prod.productId)
+    orderProducts.forEach((prod) => {
+      let recordProd = findObjectByValue("Product", "id", prod.productId);
       data.push({
         type: "product",
 
@@ -29,64 +39,84 @@ function getOrders(startDate, endDate, filterOption, offsetRow) {
         orderTime: formatTimestamp(order.time),
         orderMemberName: order.memberName,
         orderMemberEmail: order.memberEmail,
-        orderRow:order.row,
-        
+        orderRow: order.row,
+
         optionEmail: prod.optionEmail,
         productName: recordProd.name,
         productImgSrc: recordProd.imgSrc,
         deleteStatus: prod["delete"],
-        prodRow:recordProd.row,
-      })
-    })
-   
-  })
+        prodRow: recordProd.row,
+      });
+    });
+  });
 
   return data;
 }
 
-function getPaginationedOrders(startDate, endDate, filterOption, lastSearchedRow, pageSize){
+function getPaginationedOrders(
+  startDate,
+  endDate,
+  filterOption,
+  lastSearchedRow,
+  pageSize
+) {
   let scriptProperties = PropertiesService.getScriptProperties();
-  let spreadSheetId = scriptProperties.getProperty('spreadSheetId')
+  let spreadSheetId = scriptProperties.getProperty("spreadSheetId");
   let spreadsheet = SpreadsheetApp.openById(spreadSheetId);
-  let orderSheet = spreadsheet.getSheetByName("Order")
+  let orderSheet = spreadsheet.getSheetByName("Order");
 
   let filteredOrders = [];
   let startDateTimestamp = Date.parse(startDate);
-  let endDateTimestamp = Date.parse(endDate) + (24 * 60 * 60 * 1000);
+  let endDateTimestamp = Date.parse(endDate) + 24 * 60 * 60 * 1000;
 
-  let orderFieldValues = makeFieldValues("Order")
+  let orderFieldValues = makeFieldValues("Order");
   let ordersData = orderSheet.getRange("B:B").getValues();
   let canceledData = orderSheet.getRange("F:F").getValues();
-  let startSearchingRow = orderSheet.getLastRow() + 1
-  
-  if(lastSearchedRow!=0){
-    startSearchingRow = lastSearchedRow-1
+  let startSearchingRow = orderSheet.getLastRow() + 1;
+
+  if (lastSearchedRow != 0) {
+    startSearchingRow = lastSearchedRow - 1;
   }
 
-  function checkFilter(filterOption, value){
+  function checkFilter(filterOption, value) {
     switch (filterOption) {
-      case 'total':
+      case "total":
         return true;
-      case 'share':
-        return value==false ? true : false
-      case 'cancel':
-        return value==true ? true : false
+      case "share":
+        return value == false ? true : false;
+      case "cancel":
+        return value == true ? true : false;
       default:
         return true;
     }
   }
 
-  for (let row = startSearchingRow; row > 1 && filteredOrders.length<pageSize; row--) {
-    let timeData = ordersData[row-1][0]
-    let canceled = canceledData[row-1][0]
-    console.log("startDate", startDateTimestamp, "endDate", endDateTimestamp, "timeData", timeData)
-    if (timeData >= startDateTimestamp && timeData <= endDateTimestamp && checkFilter(filterOption, canceled)) {
-      let order = createObjectFromRow(orderSheet, row, orderFieldValues)
+  for (
+    let row = startSearchingRow;
+    row > 1 && filteredOrders.length < pageSize;
+    row--
+  ) {
+    let timeData = ordersData[row - 1][0];
+    let canceled = canceledData[row - 1][0];
+    console.log(
+      "startDate",
+      startDateTimestamp,
+      "endDate",
+      endDateTimestamp,
+      "timeData",
+      timeData
+    );
+    if (
+      timeData >= startDateTimestamp &&
+      timeData <= endDateTimestamp &&
+      checkFilter(filterOption, canceled)
+    ) {
+      let order = createObjectFromRow(orderSheet, row, orderFieldValues);
       filteredOrders.push(order);
     }
   }
 
-  let pageOrders = filteredOrders //.slice(offset, offset + pageSize);
+  let pageOrders = filteredOrders; //.slice(offset, offset + pageSize);
   return pageOrders;
 }
 
@@ -98,6 +128,7 @@ function formatTimestamp(timestamp) {
   var hours = ("0" + date.getHours()).slice(-2); // 시간은 2자리로 만듭니다.
   var minutes = ("0" + date.getMinutes()).slice(-2); // 분은 2자리로 만듭니다.
 
-  var formattedTimestamp = year + "." + month + "." + day + " " + hours + ":" + minutes;
+  var formattedTimestamp =
+    year + "." + month + "." + day + " " + hours + ":" + minutes;
   return formattedTimestamp;
 }
